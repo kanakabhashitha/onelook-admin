@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneLook Admin</title>
+<!--
+  OneLook demo admin page: NID test records + reset app users.
+  Talks only to the "admin" Edge Function. No keys inside this file:
+  the username + password are checked on the server (ADMIN_USERNAME / ADMIN_PASSWORD secrets).
+  Open it straight from your computer, or host it on any static host (Netlify Drop, GitHub Pages, ...).
+-->
+<style>
+  :root {
+    --teal: #0F5E63; --teal-dark: #0B4347; --amber: #E8A33D; --ink: #16181D; --muted: #5E636B;
+    --ground: #F6F5F1; --line: #E6E3DC; --card: #FFFFFF; --ok: #1C7C54; --ok-soft: #E3F1EA;
+    --err: #B4410F; --err-soft: #FBEADF; --soft: #E4EFEE;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select, textarea { font: inherit; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  header .brand { font-weight: 700; font-size: 20px; letter-spacing: -0.3px; }
+  header .brand span { color: var(--teal); }
+  header .tag { font-size: 12px; font-weight: 700; color: var(--teal); background: var(--soft);
+                border-radius: 999px; padding: 3px 10px; }
+  header .spacer { flex: 1; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; }
+  .btn { border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; cursor: pointer;
+         background: var(--teal); color: #fff; min-height: 42px; }
+  .btn:hover { background: var(--teal-dark); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--teal); border: 1.5px solid var(--teal); }
+  .btn.ghost:hover { background: var(--soft); }
+  .btn.danger { background: transparent; color: var(--err); border: 1.5px solid var(--err); }
+  .btn.danger:hover { background: var(--err-soft); }
+  .btn.small { padding: 6px 12px; min-height: 34px; font-size: 13.5px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 12px 0 6px; }
+  input, select, textarea { width: 100%; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px;
+                            background: #fff; color: var(--ink); outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--teal); }
+  .msg { margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 14px; display: none; }
+  .msg.err { display: block; background: var(--err-soft); color: var(--err); }
+  .msg.ok { display: block; background: var(--ok-soft); color: var(--ok); }
+
+  /* Login */
+  #login { max-width: 380px; margin: 10vh auto 0; }
+  #login h1 { margin: 0 0 4px; font-size: 22px; }
+  #login p { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+  #login .btn { width: 100%; margin-top: 18px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 14px;
+          padding: 4px; width: fit-content; margin-bottom: 16px; }
+  .tabs button { border: 0; background: transparent; border-radius: 10px; padding: 8px 16px; font-weight: 600;
+                 color: var(--muted); cursor: pointer; }
+  .tabs button.on { background: var(--teal); color: #fff; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .toolbar input { max-width: 280px; }
+  .toolbar .count { color: var(--muted); font-size: 14px; }
+  .toolbar .spacer { flex: 1; }
+
+  /* Lists */
+  .list { display: grid; gap: 10px; }
+  .row { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--line);
+         border-radius: 16px; padding: 12px 14px; flex-wrap: wrap; }
+  .row img, .row .noimg { width: 96px; height: 62px; border-radius: 10px; object-fit: cover; background: var(--line);
+                          flex: none; }
+  .row .main { flex: 1 1 260px; min-width: 0; }
+  .row .title { font-weight: 700; }
+  .row .sub { color: var(--muted); font-size: 13.5px; margin-top: 2px; overflow-wrap: anywhere; }
+  .row .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px;
+          margin-left: 6px; vertical-align: 1px; }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.muted { background: var(--line); color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; }
+
+  /* Form panel */
+  .overlay { position: fixed; inset: 0; background: rgba(20,20,19,.45); display: none; align-items: flex-start;
+             justify-content: center; padding: 30px 12px; overflow-y: auto; z-index: 10; }
+  .overlay.show { display: flex; }
+  .panel { width: 100%; max-width: 560px; }
+  .panel h2 { margin: 0 0 4px; font-size: 19px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .photo { margin-top: 6px; border: 1.5px dashed var(--line); border-radius: 14px; padding: 12px; text-align: center; }
+  .photo img { max-width: 100%; max-height: 220px; border-radius: 10px; display: none; margin: 0 auto 10px; }
+  .photo .hint { color: var(--muted); font-size: 13px; }
+  .panel .foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  .hidden { display: none !important; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff;
+           padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .2s; z-index: 20;
+           pointer-events: none; max-width: calc(100% - 32px); }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">One<span>Look</span></div>
+    <div class="tag">Demo admin</div>
+    <div class="spacer"></div>
+    <button id="btnLogout" class="btn ghost small hidden">Log out</button>
+  </header>
+
+  <!-- Login -->
+  <form id="login" class="card" autocomplete="on">
+    <h1>Sign in</h1>
+    <p>Manage NID test records and reset app users.</p>
+    <label for="user">Username</label>
+    <input id="user" autocomplete="username" required>
+    <label for="pass">Password</label>
+    <input id="pass" type="password" autocomplete="current-password" required>
+    <button class="btn" id="btnLogin" type="submit">Sign in</button>
+    <div id="loginMsg" class="msg"></div>
+  </form>
+
+  <!-- App -->
+  <main id="app" class="hidden">
+    <div class="tabs" role="tablist">
+      <button class="on" data-tab="nid" role="tab">NID records</button>
+      <button data-tab="users" role="tab">App users</button>
+    </div>
+
+    <section id="tab-nid">
+      <div class="toolbar">
+        <input id="nidSearch" placeholder="Search NID or name" aria-label="Search NID records">
+        <span id="nidCount" class="count"></span>
+        <div class="spacer"></div>
+        <button class="btn ghost small" id="btnNidReload">Refresh</button>
+        <button class="btn" id="btnNidAdd">+ Add NID record</button>
+      </div>
+      <div id="nidList" class="list"></div>
+    </section>
+
+    <section id="tab-users" class="hidden">
+      <div class="toolbar">
+        <input id="userSearch" placeholder="Search email, name or NID" aria-label="Search users">
+        <span id="userCount" class="count"></span>
+        <div class="spacer"></div>
+        <button class="btn ghost small" id="btnUserReload">Refresh</button>
+      </div>
+      <div id="userList" class="list"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Add / edit NID record -->
+<div id="formOverlay" class="overlay">
+  <form id="nidForm" class="card panel">
+    <h2 id="formTitle">Add NID record</h2>
+    <div class="grid2">
+      <div><label for="fNid">NID number</label><input id="fNid" required placeholder="e.g. 951093009V"></div>
+      <div><label for="fDob">Date of birth</label><input id="fDob" required placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10"></div>
+    </div>
+    <label for="fName">Full name (exactly as on the card)</label><input id="fName" required>
+    <div class="grid2">
+      <div><label for="fFather">Father's name</label><input id="fFather"></div>
+      <div><label for="fMother">Mother's name</label><input id="fMother"></div>
+    </div>
+    <div class="grid2">
+      <div><label for="fGender">Gender</label>
+        <select id="fGender"><option value="">—</option><option>male</option><option>female</option><option>other</option></select></div>
+      <div><label for="fAddress">Address</label><input id="fAddress"></div>
+    </div>
+    <label for="fPhoto">Photo of the NID card front</label>
+    <div class="photo">
+      <img id="fPreview" alt="NID card preview">
+      <input id="fPhoto" type="file" accept="image/*">
+      <div class="hint" id="fPhotoHint">Whole card, the right way up, no glare. Saved as &lt;NID&gt;.jpg</div>
+    </div>
+    <div id="formMsg" class="msg"></div>
+    <div class="foot">
+      <button type="button" class="btn ghost" id="btnFormCancel">Cancel</button>
+      <button type="submit" class="btn" id="btnFormSave">Save</button>
+    </div>
+  </form>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+// ---- Settings: only the project address (not secret) ----
+const API = "https://rkqplkzgapyottgspnjg.supabase.co/functions/v1/admin";
+
+const $ = (id) => document.getElementById(id);
+let creds = null;              // { username, password } for this browser tab only
+let nidRecords = [], users = [];
+let editing = null;            // NID being edited, or null when adding
+let photoB64 = null;           // new card photo (base64 JPEG)
+
+// ---------- Server ----------
+async function call(action, extra = {}) {
+  const res = await fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...creds, action, ...extra }),
+  });
+  let json = {};
+  try { json = await res.json(); } catch (e) { /* not JSON */ }
+  if (res.status === 401) { logout(); throw new Error(json.message || "Please sign in again."); }
+  if (!res.ok || !json.ok) throw new Error(json.message || `Server error ${res.status}`);
+  return json;
+}
+
+function toast(text) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 3000);
+}
+function showMsg(el, text, ok) { el.textContent = text; el.className = "msg " + (ok ? "ok" : "err"); }
+function hideMsg(el) { el.className = "msg"; }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function dmy(iso) { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; }
+function when(iso) { return iso ? new Date(iso).toLocaleString() : "—"; }
+
+// ---------- Login ----------
+$("login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideMsg($("loginMsg"));
+  creds = { username: $("user").value.trim(), password: $("pass").value };
+  $("btnLogin").disabled = true; $("btnLogin").textContent = "Signing in…";
+  try {
+    await call("login");
+    try { sessionStorage.setItem("ol_admin", JSON.stringify(creds)); } catch (err) { /* private mode */ }
+    enterApp();
+  } catch (err) {
+    creds = null;
+    showMsg($("loginMsg"), err.message, false);
+  } finally {
+    $("btnLogin").disabled = false; $("btnLogin").textContent = "Sign in";
+  }
+});
+
+function enterApp() {
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden"); $("btnLogout").classList.remove("hidden");
+  loadNid(); loadUsers();
+}
+function logout() {
+  creds = null;
+  try { sessionStorage.removeItem("ol_admin"); } catch (e) { /* ignore */ }
+  $("app").classList.add("hidden"); $("btnLogout").classList.add("hidden"); $("login").classList.remove("hidden");
+  $("pass").value = "";
+}
+$("btnLogout").addEventListener("click", logout);
+
+// ---------- Tabs ----------
+document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  $("tab-nid").classList.toggle("hidden", b.dataset.tab !== "nid");
+  $("tab-users").classList.toggle("hidden", b.dataset.tab !== "users");
+}));
+
+// ---------- NID records ----------
+async function loadNid() {
+  $("nidList").innerHTML = '<div class="empty">Loading…</div>';
+  try { nidRecords = (await call("nid_list")).records; renderNid(); }
+  catch (err) { $("nidList").innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+}
+function renderNid() {
+  const q = $("nidSearch").value.trim().toLowerCase();
+  const rows = nidRecords.filter((r) => !q || r.nid.toLowerCase().includes(q) || (r.full_name || "").toLowerCase().includes(q));
+  $("nidCount").textContent = `${rows.length} record${rows.length === 1 ? "" : "s"}`;
+  if (!rows.length) { $("nidList").innerHTML = '<div class="empty">No NID records yet. Add the first one.</div>'; return; }
+  $("nidList").innerHTML = rows.map((r) => `
+    <div class="row">
+      ${r.photo_url ? `<img src="${esc(r.photo_url)}" alt="NID card ${esc(r.nid)}">` : '<div class="noimg"></div>'}
+      <div class="main">
+        <div class="title">${esc(r.full_name)}
+          ${r.registered_email ? `<span class="chip ok">Registered</span>` : `<span class="chip muted">Not registered</span>`}</div>
+        <div class="sub">NID ${esc(r.nid)} · DOB ${esc(dmy(r.dob))}${r.gender ? " · " + esc(r.gender) : ""}${r.registered_email ? " · " + esc(r.registered_email) : ""}</div>
+        <div class="sub">${r.father_name ? "Father: " + esc(r.father_name) : ""}${r.father_name && r.mother_name ? " · " : ""}${r.mother_name ? "Mother: " + esc(r.mother_name) : ""}${r.address ? " · " + esc(r.address) : ""}</div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost small" data-edit="${esc(r.nid)}">Edit</button>
+        <button class="btn danger small" data-del="${esc(r.nid)}">Delete</button>
+      </div>
+    </div>`).join("");
+}
+$("nidSearch").addEventListener("input", renderNid);
+$("btnNidReload").addEventListener("click", loadNid);
+$("nidList").addEventListener("click", async (e) => {
+  const edit = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]");
+  if (edit) openForm(nidRecords.find((r) => r.nid === edit.dataset.edit));
+  if (del) {
+    const nid = del.dataset.del;
+    if (!confirm(`Delete the NID record ${nid} and its photo?`)) return;
+    del.disabled = true;
+    try { await call("nid_delete", { nid }); toast(`Deleted ${nid}`); loadNid(); }
+    catch (err) { toast(err.message); del.disabled = false; }
+  }
+});
+
+// ---------- Add / edit form ----------
+function openForm(rec) {
+  editing = rec ? rec.nid : null; photoB64 = null;
+  $("formTitle").textContent = rec ? `Edit NID record ${rec.nid}` : "Add NID record";
+  $("fNid").value = rec ? rec.nid : ""; $("fNid").readOnly = !!rec;
+  $("fName").value = rec?.full_name || ""; $("fFather").value = rec?.father_name || "";
+  $("fMother").value = rec?.mother_name || ""; $("fDob").value = rec ? dmy(rec.dob) : "";
+  $("fGender").value = rec?.gender || ""; $("fAddress").value = rec?.address || "";
+  $("fPhoto").value = "";
+  const prev = $("fPreview");
+  if (rec?.photo_url) { prev.src = rec.photo_url; prev.style.display = "block"; } else { prev.removeAttribute("src"); prev.style.display = "none"; }
+  $("fPhotoHint").textContent = rec ? "Choose a new photo only if you want to replace it." : "Whole card, the right way up, no glare. Saved as <NID>.jpg";
+  hideMsg($("formMsg"));
+  $("formOverlay").classList.add("show");
+  (rec ? $("fName") : $("fNid")).focus();
+}
+function closeForm() { $("formOverlay").classList.remove("show"); }
+$("btnNidAdd").addEventListener("click", () => openForm(null));
+$("btnFormCancel").addEventListener("click", closeForm);
+$("formOverlay").addEventListener("click", (e) => { if (e.target === $("formOverlay")) closeForm(); });
+
+// DD/MM/YYYY: slashes added while typing
+$("fDob").addEventListener("input", (e) => {
+  const d = e.target.value.replace(/\D/g, "").slice(0, 8);
+  e.target.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+});
+
+// Card photo: shrink to max 1600 px and convert to JPEG in the browser
+$("fPhoto").addEventListener("change", (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const url = c.toDataURL("image/jpeg", 0.9);
+    photoB64 = url.split(",")[1];
+    $("fPreview").src = url; $("fPreview").style.display = "block";
+    URL.revokeObjectURL(img.src);
+  };
+  img.onerror = () => showMsg($("formMsg"), "This file is not a picture we can read.", false);
+  img.src = URL.createObjectURL(file);
+});
+
+$("nidForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideMsg($("formMsg"));
+  if (!editing && !photoB64) { showMsg($("formMsg"), "Please add the photo of the NID card front.", false); return; }
+  const record = {
+    nid: $("fNid").value, full_name: $("fName").value, father_name: $("fFather").value, mother_name: $("fMother").value,
+    dob: $("fDob").value, gender: $("fGender").value, address: $("fAddress").value,
+  };
+  $("btnFormSave").disabled = true; $("btnFormSave").textContent = "Saving…";
+  try {
+    const r = await call("nid_save", { record, photo: photoB64 });
+    closeForm(); toast(r.created ? `Added ${r.nid}` : `Updated ${r.nid}`); loadNid();
+  } catch (err) {
+    showMsg($("formMsg"), err.message, false);
+  } finally {
+    $("btnFormSave").disabled = false; $("btnFormSave").textContent = "Save";
+  }
+});
+
+// ---------- App users ----------
+async function loadUsers() {
+  $("userList").innerHTML = '<div class="empty">Loading…</div>';
+  try { users = (await call("users_list")).users; renderUsers(); }
+  catch (err) { $("userList").innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+}
+function renderUsers() {
+  const q = $("userSearch").value.trim().toLowerCase();
+  const rows = users.filter((u) => !q || [u.email, u.full_name, u.nid].some((v) => (v || "").toLowerCase().includes(q)));
+  $("userCount").textContent = `${rows.length} user${rows.length === 1 ? "" : "s"}`;
+  if (!rows.length) { $("userList").innerHTML = '<div class="empty">No app users.</div>'; return; }
+  $("userList").innerHTML = rows.map((u) => `
+    <div class="row">
+      <div class="main">
+        <div class="title">${esc(u.full_name || "(profile not finished)")}
+          ${u.face_enrolled ? '<span class="chip ok">Face profile</span>' : '<span class="chip muted">No face profile</span>'}</div>
+        <div class="sub">${esc(u.email)}${u.nid ? " · NID " + esc(u.nid) : ""} · ${u.applications} application${u.applications === 1 ? "" : "s"}</div>
+        <div class="sub">Joined ${esc(when(u.created_at))} · Last sign-in ${esc(when(u.last_sign_in_at))}</div>
+      </div>
+      <div class="actions">
+        <button class="btn danger small" data-reset="${esc(u.id)}" data-email="${esc(u.email)}">Reset user</button>
+      </div>
+    </div>`).join("");
+}
+$("userSearch").addEventListener("input", renderUsers);
+$("btnUserReload").addEventListener("click", loadUsers);
+$("userList").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-reset]"); if (!b) return;
+  const email = b.dataset.email;
+  if (!confirm(`Reset ${email}?\n\nThis deletes their login, profile, applications, documents and face record. ` +
+               `They can then register again with the same email. Their NID record is kept.`)) return;
+  b.disabled = true; b.textContent = "Resetting…";
+  try { await call("user_reset", { user_id: b.dataset.reset }); toast(`${email} was reset`); loadUsers(); loadNid(); }
+  catch (err) { toast(err.message); b.disabled = false; b.textContent = "Reset user"; }
+});
+
+// ---------- Start: stay signed in for this browser tab ----------
+try {
+  const saved = JSON.parse(sessionStorage.getItem("ol_admin") || "null");
+  if (saved && saved.username) { creds = saved; call("login").then(enterApp).catch(() => logout()); }
+} catch (e) { /* storage not available */ }
+</script>
+</body>
+</html>
